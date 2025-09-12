@@ -13,10 +13,13 @@ export class ProgressManager {
     this.io = io
     this.status = {
       id: processId,
+      userId: 'anonymous',
+      userLabel: '匿名用户',
       status: 'pending',
       progress: 0,
       totalFiles,
-      processedFiles: 0
+      processedFiles: 0,
+      createdAt: new Date()
     }
   }
 

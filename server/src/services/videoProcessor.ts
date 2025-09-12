@@ -23,6 +23,8 @@ interface ProcessingOptions {
       outline: boolean
       outlineWidth: number
     }
+    userId?: string
+    userLabel?: string
   }
 }
 
@@ -44,10 +46,13 @@ export class VideoProcessor {
     
     this.status = {
       id: processId,
+      userId: 'anonymous',
+      userLabel: '匿名用户',
       status: 'pending',
       progress: 0,
       totalFiles: 0,
-      processedFiles: 0
+      processedFiles: 0,
+      createdAt: new Date()
     }
   }
 
@@ -69,7 +74,9 @@ export class VideoProcessor {
         status: 'processing',
         totalFiles: options.videos.length,
         processedFiles: 0,
-        progress: 0
+        progress: 0,
+        userId: options.config.userId || 'anonymous',
+        userLabel: options.config.userLabel || '匿名用户'
       }
 
       console.log('更新处理状态并保存:', this.status)
@@ -127,6 +134,9 @@ export class VideoProcessor {
       if (!this.shouldStop) {
         this.status.status = 'completed'
         this.status.progress = 100
+        // 统计结果视频数量
+        this.status.resultVideoCount = await this.countResultVideos(outputDir)
+        console.log(`任务完成，共生成 ${this.status.resultVideoCount} 个结果视频`)
       } else {
         this.status.status = 'error'
         this.status.error = '处理被用户取消'
@@ -388,6 +398,25 @@ export class VideoProcessor {
     } catch (error) {
       console.error('查找字幕文件失败:', error)
       return []
+    }
+  }
+
+  private async countResultVideos(outputDir: string): Promise<number> {
+    try {
+      if (!await fs.pathExists(outputDir)) {
+        return 0
+      }
+
+      const videosDir = path.join(outputDir, 'videos')
+      if (!await fs.pathExists(videosDir)) {
+        return 0
+      }
+
+      const files = await fs.readdir(videosDir)
+      return files.filter(file => file.endsWith('.mp4')).length
+    } catch (error) {
+      console.error('统计结果视频数量失败:', error)
+      return 0
     }
   }
 

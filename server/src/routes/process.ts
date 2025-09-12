@@ -10,6 +10,27 @@ const router = express.Router()
 // 存储处理任务的映射
 const processingTasks = new Map<string, VideoProcessor>()
 
+// 统计结果视频数量的帮助函数
+async function countResultVideos(outputDir: string, taskId: string): Promise<number> {
+  try {
+    const taskOutputDir = path.join(outputDir, taskId)
+    if (!await fs.pathExists(taskOutputDir)) {
+      return 0
+    }
+
+    const videosDir = path.join(taskOutputDir, 'videos')
+    if (!await fs.pathExists(videosDir)) {
+      return 0
+    }
+
+    const files = await fs.readdir(videosDir)
+    return files.filter(file => file.endsWith('.mp4')).length
+  } catch (error) {
+    console.error(`统计任务 ${taskId} 结果视频数量失败:`, error)
+    return 0
+  }
+}
+
 // 开始处理视频
 router.post('/start', uploadFiles, async (req, res) => {
   try {
@@ -44,7 +65,9 @@ router.post('/start', uploadFiles, async (req, res) => {
         audioDuration: processConfig.audioDuration || 30,
         subtitlePath: processConfig.subtitlePath || process.env.SUBTITLE_PATH || '',
         subtitleStyle: processConfig.subtitleStyle || 'tiktok-classic',
-        customSubtitleSettings: processConfig.customSubtitleSettings
+        customSubtitleSettings: processConfig.customSubtitleSettings,
+        userId: processConfig.userId || 'anonymous',
+        userLabel: processConfig.userLabel || '匿名用户'
       }
     }
     
@@ -199,8 +222,12 @@ router.get('/list', async (req, res) => {
           const status = await fs.readJSON(statusPath)
           const stats = await fs.stat(statusPath)
           
+          // 统计结果视频数量
+          const resultVideoCount = await countResultVideos(outputDir, taskId)
+          
           tasks.push({
             ...status,
+            resultVideoCount,
             createdAt: stats.birthtime,
             updatedAt: stats.mtime
           })

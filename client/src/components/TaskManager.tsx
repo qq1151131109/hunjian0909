@@ -1,29 +1,32 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Table, Button, Tag, Space, message, Popconfirm, Tooltip } from 'antd'
+import { Card, Table, Button, Tag, Space, message, Popconfirm, Tooltip, Switch } from 'antd'
 import { 
   ReloadOutlined, 
   StopOutlined, 
   DownloadOutlined,
-  DeleteOutlined
+  DeleteOutlined,
+  UserOutlined
 } from '@ant-design/icons'
 import { io, Socket } from 'socket.io-client'
 import { apiService } from '../services/api'
 import type { ProcessStatus } from '../../../shared/types'
 
-interface Task extends ProcessStatus {
+interface Task extends Omit<ProcessStatus, 'createdAt'> {
   createdAt: string
   updatedAt: string
+  resultVideoCount?: number
 }
 
 interface TaskManagerProps {
   onSelectTask: (taskId: string) => void
   currentTaskId?: string
+  currentUser?: { id: string, name: string } | null
 }
 
-const TaskManager: React.FC<TaskManagerProps> = ({ onSelectTask, currentTaskId }) => {
+const TaskManager: React.FC<TaskManagerProps> = ({ onSelectTask, currentTaskId, currentUser }) => {
   const [tasks, setTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(false)
-  const [socket, setSocket] = useState<Socket | null>(null)
+  const [showMyTasks, setShowMyTasks] = useState(false)
 
   // 加载任务列表
   const loadTasks = async () => {
@@ -107,10 +110,21 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onSelectTask, currentTaskId }
   // 表格列定义
   const columns = [
     {
+      title: '用户',
+      dataIndex: 'userLabel',
+      key: 'userLabel',
+      width: 120,
+      render: (userLabel: string, record: Task) => (
+        <Tag color="blue" style={{ fontSize: '11px' }}>
+          {userLabel || record.userId?.substring(0, 8) || '未知'}
+        </Tag>
+      )
+    },
+    {
       title: '任务ID',
       dataIndex: 'id',
       key: 'id',
-      width: 200,
+      width: 140,
       render: (id: string) => (
         <Tooltip title={id}>
           <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>
@@ -123,21 +137,32 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onSelectTask, currentTaskId }
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 80,
       render: getStatusTag
     },
     {
       title: '进度',
       dataIndex: 'progress',
       key: 'progress',
-      width: 100,
+      width: 80,
       render: (progress: number) => `${Math.round(progress)}%`
     },
     {
       title: '文件数',
       key: 'files',
-      width: 100,
+      width: 80,
       render: (record: Task) => `${record.processedFiles || 0}/${record.totalFiles || 0}`
+    },
+    {
+      title: '结果数',
+      dataIndex: 'resultVideoCount',
+      key: 'resultVideoCount',
+      width: 80,
+      render: (count: number) => (
+        <Tag color={count > 0 ? 'green' : 'default'}>
+          {count || 0}
+        </Tag>
+      )
     },
     {
       title: '创建时间',
@@ -189,40 +214,7 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onSelectTask, currentTaskId }
     }
   ]
 
-  // 设置Socket.io连接进行实时更新
-  useEffect(() => {
-    const newSocket = io()
-    setSocket(newSocket)
-    
-    // 监听任务状态更新（全局消息）
-    newSocket.on('task-status-update', (status: ProcessStatus) => {
-      console.log('收到任务状态更新:', status)
-      setTasks(prev => {
-        const existingTask = prev.find(task => task.id === status.id)
-        if (existingTask) {
-          // 更新现有任务
-          return prev.map(task => 
-            task.id === status.id 
-              ? { ...task, ...status }
-              : task
-          )
-        } else {
-          // 添加新任务
-          const newTask: Task = {
-            ...status,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-          return [newTask, ...prev]
-        }
-      })
-    })
-
-    return () => {
-      newSocket.disconnect()
-      newSocket.removeAllListeners()
-    }
-  }, [])
+  // 由于任务列表通过定期轮询更新，暂时移除Socket.io实时更新
 
   useEffect(() => {
     loadTasks()
@@ -231,24 +223,40 @@ const TaskManager: React.FC<TaskManagerProps> = ({ onSelectTask, currentTaskId }
     return () => clearInterval(interval)
   }, [])
 
+  // 筛选后的任务列表
+  const filteredTasks = showMyTasks && currentUser 
+    ? tasks.filter(task => task.userId === currentUser.id)
+    : tasks
+
   return (
     <Card
       title="📋 任务管理"
       extra={
-        <Button
-          icon={<ReloadOutlined />}
-          onClick={loadTasks}
-          loading={loading}
-          size="small"
-        >
-          刷新
-        </Button>
+        <Space>
+          {currentUser && (
+            <Switch
+              checkedChildren={<UserOutlined />}
+              unCheckedChildren="全部"
+              checked={showMyTasks}
+              onChange={setShowMyTasks}
+              size="small"
+            />
+          )}
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={loadTasks}
+            loading={loading}
+            size="small"
+          >
+            刷新
+          </Button>
+        </Space>
       }
       size="small"
     >
       <Table
         columns={columns}
-        dataSource={tasks}
+        dataSource={filteredTasks}
         rowKey="id"
         size="small"
         loading={loading}

@@ -8,6 +8,7 @@ import type { SubtitleSettings } from './types/subtitle'
 import CompactSubtitleSelector from './components/CompactSubtitleSelector'
 import FileUploadSection from './components/FileUploadSection'
 import TaskManager from './components/TaskManager'
+import UserIdentity from './components/UserIdentity'
 
 const { Header, Content } = Layout
 const { Title, Text } = Typography
@@ -21,16 +22,19 @@ function App() {
   const [processId, setProcessId] = useState<string>('')
   const [processStatus, setProcessStatus] = useState<ProcessStatus>({
     id: '',
+    userId: '',
     status: 'pending',
     progress: 0,
     totalFiles: 0,
-    processedFiles: 0
+    processedFiles: 0,
+    createdAt: new Date()
   })
   const [processResults, setProcessResults] = useState<ProcessResult[]>([])
   const [socket, setSocket] = useState<Socket | null>(null)
   const [isProcessing, setIsProcessing] = useState(false) // 当前选中任务是否在处理中
   const [isSubmitting, setIsSubmitting] = useState(false) // 是否正在提交新任务
   const [selectedTaskId, setSelectedTaskId] = useState<string>('')
+  const [currentUser, setCurrentUser] = useState<{id: string, name: string} | null>(null)
 
   // 清理Socket连接，防止内存泄漏
   useEffect(() => {
@@ -49,9 +53,19 @@ function App() {
     setCustomSubtitleSettings(settings)
   }, [])
 
+  // 处理用户身份变更
+  const handleUserChange = useCallback((userId: string, userName: string) => {
+    setCurrentUser({ id: userId, name: userName })
+  }, [])
+
   const handleStartProcess = async () => {
     if (selectedFiles.length === 0) {
       message.error('请先选择视频文件')
+      return
+    }
+    
+    if (!currentUser) {
+      message.error('请先设置用户名')
       return
     }
 
@@ -74,7 +88,9 @@ function App() {
         audioDuration: 30,
         subtitlePath: '',
         subtitleStyle: selectedSubtitleStyle,
-        customSubtitleSettings: customSubtitleSettings
+        customSubtitleSettings: customSubtitleSettings,
+        userId: currentUser.id,
+        userLabel: currentUser.name
       }
       console.log('前端发送的配置:', config)
       formData.append('config', JSON.stringify(config))
@@ -203,6 +219,7 @@ function App() {
       </Header>
       
       <Content style={{ padding: '24px', background: '#f0f2f5', minHeight: '100vh' }}>
+        <UserIdentity onUserChange={handleUserChange} />
         <Row gutter={[24, 24]}>
           {/* 左侧：文件选择和配置 */}
           <Col xs={24} lg={12}>
@@ -292,6 +309,7 @@ function App() {
               <TaskManager 
                 onSelectTask={handleSelectTask}
                 currentTaskId={selectedTaskId}
+                currentUser={currentUser}
               />
             </Card>
           </Col>
