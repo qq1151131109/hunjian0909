@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev
 
 # 分别启动前后端
-npm run server:dev  # 后端: http://localhost:8002
+npm run server:dev  # 后端: http://localhost:9001
 npm run client:dev  # 前端: http://localhost:3000
 
 # 安装所有依赖（包括Node.js和Python依赖）
@@ -61,9 +61,15 @@ npx playwright test
 
 ### 共享类型定义
 核心接口定义在 `shared/types.ts` 中，前后端共享：
-- `ProcessStatus`: 处理状态和进度
+- `ProcessStatus`: 处理状态和进度，包含用户身份和结果视频数量统计
 - `ProcessResult`: 单个文件处理结果
-- `ProcessConfig`: 处理配置参数
+- `ProcessConfig`: 处理配置参数，包含用户身份信息
+
+### 用户身份管理
+系统支持多用户任务识别：
+- 用户首次访问时设置用户名，存储在localStorage
+- 每个任务自动标记用户ID和显示名称
+- 任务列表支持按用户筛选，便于区分不同用户的任务
 
 ## 重要配置文件
 
@@ -71,11 +77,11 @@ npx playwright test
 
 **服务器配置 (`server/.env`)**
 ```
-PORT=8000
+PORT=9001
 UPLOAD_DIR=./uploads           # 上传文件目录（相对路径）
 OUTPUT_DIR=./output            # 输出文件目录（相对路径）
 SUBTITLE_PATH=../subtitles     # 字幕文件目录（相对路径）
-MAX_FILE_SIZE=1073741824       # 最大文件大小（1GB）
+MAX_FILE_SIZE=10737418240      # 最大文件大小（10GB）
 FFMPEG_PATH=/usr/bin/ffmpeg    # FFmpeg路径（可选）
 ```
 
@@ -97,8 +103,13 @@ VITE_SUBTITLE_PATH=../subtitles  # 字幕文件目录（相对路径）
 ```
 ├── client/src/
 │   ├── App.tsx              # 主应用组件，包含完整的处理流程UI
-│   ├── services/api.ts      # API服务封装
-│   └── types/shared.ts      # 前端类型定义
+│   ├── components/
+│   │   ├── UserIdentity.tsx # 用户身份管理组件
+│   │   ├── TaskManager.tsx  # 任务列表管理，支持用户筛选
+│   │   ├── FileUploadSection.tsx # 文件上传组件
+│   │   └── CompactSubtitleSelector.tsx # 字幕样式选择器
+│   ├── services/api.ts      # API服务封装，包含任务管理API
+│   └── types/              # 前端类型定义
 ├── server/src/
 │   ├── app.ts              # 服务器入口，Socket.io配置
 │   ├── routes/process.ts   # 处理任务路由和管理器
@@ -117,9 +128,11 @@ VITE_SUBTITLE_PATH=../subtitles  # 字幕文件目录（相对路径）
 系统实现了完整的FFmpeg操作封装，包括：
 - `getAudioDuration()`: 获取音频文件时长
 - `getVideoAudioDuration()`: 获取视频中音频轨道时长
-- `normalizeVideo()`: 视频格式标准化为TikTok格式
+- `normalizeVideo()`: 视频格式标准化为TikTok格式  
 - `concatenateVideos()`: 视频拼接（使用concat demuxer方法）
 - `cutVideoByDuration()`: 按时长裁切视频
+- `addSubtitleToVideo()`: 添加字幕到视频，支持自定义样式
+- `addAudioToVideo()`: 添加背景音频到视频
 
 ## 开发注意事项
 
@@ -127,3 +140,30 @@ VITE_SUBTITLE_PATH=../subtitles  # 字幕文件目录（相对路径）
 - 使用Socket.io房间机制隔离不同用户的处理任务  
 - 所有视频操作都是异步的，需要适当的错误处理和超时控制
 - nodemon已配置忽略output和uploads目录，避免处理过程中服务重启
+- 系统支持最大10GB单文件上传，支持批量文件处理
+- 用户身份通过localStorage管理，任务自动关联用户信息
+- 任务完成后自动统计结果视频数量，在列表中显示
+
+## 关键组件说明
+
+### UserIdentity.tsx
+用户身份管理组件，首次访问时要求设置用户名：
+- 用户名存储在localStorage，页面刷新不丢失
+- 支持随时修改用户名
+- 生成唯一用户ID用于任务识别
+
+### TaskManager.tsx  
+任务列表管理组件，显示所有处理任务：
+- 显示用户标识、任务状态、进度、结果视频数量
+- 支持"仅显示我的任务"筛选功能
+- 支持任务操作：停止、下载、删除
+- 实时更新任务状态和进度
+
+### VideoProcessor.ts
+视频处理核心类，负责完整的视频处理流程：
+- 按时长智能切割视频片段
+- 支持自动字幕生成（Whisper）和外部字幕文件
+- 音频合成和视频标准化
+- 引流视频拼接
+- 实时进度反馈和错误处理
+- 处理完成后统计结果文件数量
